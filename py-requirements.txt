@@ -1,0 +1,7 @@
+flask
+imutils
+paho-mqtt
+pyaudio
+pyttsx3
+uwsgi
+scikit-learn

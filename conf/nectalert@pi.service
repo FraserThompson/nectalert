@@ -1,0 +1,10 @@
+[Unit]
+Description=nectalert
+
+[Service]
+Type=simple
+User=%i
+ExecStart=/bin/bash /home/pi/nectalert/start.sh
+
+[Install]
+WantedBy=multi-user.target

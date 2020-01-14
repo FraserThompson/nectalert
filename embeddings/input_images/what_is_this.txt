@@ -1,0 +1,1 @@
+put folders in here for each person you want to register and fill them with jpgs alternatively register_face.py can take them for you from the kinect
