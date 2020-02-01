@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import globals
 import time
+import sys
 from datetime import datetime
 import numpy as np
 import imutils
@@ -70,10 +71,22 @@ class Camera:
                                  depth <= current_depth + threshold)
 		return depth.astype(np.uint8)
 
-	# Returns a 10 bit RGB frame from the normal camera
+
+	# Returns a frame from the camera depending on the mode
 	@staticmethod
-	def get_video():
-		return frame_convert2.video_cv(freenect.sync_get_video()[0])
+	def get_video(mode, i = 0):
+		if i == 3:
+			log('CAMERA', 'Could not get video, does your kinect work?')
+			sys.exit(1)
+		try:
+			if mode == "night":
+				return Camera.get_ir()
+			else:
+				return Camera.get_rgb()
+		except TypeError:
+			log('CAMERA', 'Failed to get video frame, attempt ' + str(i))
+			time.sleep(5)
+			return Camera.get_video(mode, i + 1)
 
 	# Returns a 10 bit RGB frame from the IR camera
 	@staticmethod
@@ -81,12 +94,17 @@ class Camera:
 		array,_ = freenect.sync_get_video(0, freenect.VIDEO_IR_10BIT)
 		return cv2.cvtColor(frame_convert2.pretty_depth_cv(array), cv2.COLOR_GRAY2RGB)
 
+	# Returns a 10 bit RGB frame from the normal camera
+	@staticmethod 
+	def get_rgb():
+		return frame_convert2.video_cv(freenect.sync_get_video()[0])
+
 	# Gets frames, detects faces
 	@classmethod
 	def video_thread(cls):
 		detectorer = Detector()
 		while Camera.running:
-			Camera.frame = cls.get_ir() if Camera.is_night() else cls.get_video()
+			Camera.frame = cls.get_video(Camera.is_night())
 
 			if globals.OFFLINE_MODE:
 				cv2.imshow('Depth', depth)

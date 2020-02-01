@@ -50,6 +50,8 @@ def generate(capture, type="video"):
 
 		yield(b'--frame\r\n' + b'Content-Type: image/jpeg\r\n\r\n' + bytearray(encodedImage) + b'\r\n')
 
+#app.run(host="smell.today", port=8069, debug=True, threaded=True, use_reloader=False, ssl_context=('/etc/letsencrypt/live/smell.today/fullchain.pem', '/etc/letsencrypt/live/smell.today/privkey.pem'))
+
 # Can be used to adjust tilt
 def body(dev, ctx):
 	freenect.set_led(dev, 2)

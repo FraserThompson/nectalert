@@ -5,7 +5,20 @@ import pyttsx3
 from logger import log
 
 HOSTNAME = "localhost"
-residents_list = ['jimothy']
+notify_list = {
+	'fraser': {
+		'notify': False,
+		'greeting': 'hello_fraser.wav'
+	}, 
+	'peter': {
+		'notify': False,
+		'greeting': 'hello_peter.wav'
+	},
+	'james': {
+		'notify': True,
+		'greeting': 'jamesishere.wav'
+	}
+}
 
 class Notifier:
 	last_notify = None
@@ -13,11 +26,6 @@ class Notifier:
 
 	@classmethod
 	def notify(cls, name):
-		if name in residents_list:
-			log('NOTIFY', 'Hello ' + name)
-			os.system('aplay /home/pi/nectalert/sounds/hello_' + name + '.wav')
-			return
-
 		the_past = datetime.now() - timedelta(seconds=cls.cooldown)
 
 		if cls.last_notify and the_past >= cls.last_notify:
@@ -25,9 +33,25 @@ class Notifier:
 
 		if not cls.last_notify:
 			cls.last_notify = datetime.now()
-			log("NOTIFY", "ANOTHER VISITOR... STAY A WHILE?")
-			publish.single("home/another_visitor", "Yes", hostname=HOSTNAME)
+
+		person = notify_list.get(name)
+
+		# Play a sound
+		if person:
+			if person['greeting'] is not False:
+				log('NOTIFY', 'Hello ' + name)
+				os.system('aplay /home/pi/nectalert/sounds/' + notify_list[name]['greeting'])
+			if person['notify'] is False:
+				return
+		else:
 			os.system('aplay /home/pi/nectalert/sounds/doorbell.wav')
+
+		Notifier.notify_stranger()
+
+	@staticmethod
+	def notify_stranger():
+		log("NOTIFY", "ANOTHER VISITOR... STAY A WHILE?")
+		publish.single("home/another_visitor", "Yes", hostname=HOSTNAME)
 
 	@classmethod
 	def unnotify(cls):

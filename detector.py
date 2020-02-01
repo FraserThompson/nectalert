@@ -28,6 +28,9 @@ face_cascade = cv2.CascadeClassifier('lib/haarcascade_frontalface_default.xml')
 recognizer = pickle.loads(open('./recognizer.pickle', "rb").read())
 labels = pickle.loads(open('./labels.pickle', "rb").read())
 
+def pretty_time():
+	return datetime.today().strftime('%Y-%m-%d %H_%M_%S')
+
 if globals.OFFLINE_MODE:
 	cv2.namedWindow('Movement')
 
@@ -66,7 +69,7 @@ class Detector:
 							cv2.rectangle(frame_obj['frame'], (x, y), (x+w, y+h), (0, 255, 0), 2)
 						except TypeError:
 							log('DETECTOR', 'Error drawing rectangle, continuing')
-						cv2.imwrite(SNAPSHOT_DIR+str(datetime.now())+'_motion.jpg', frame_obj['frame'])
+						cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_motion.jpg', frame_obj['frame'])
 
 				faces = cls.detect_faces()
 
@@ -80,12 +83,12 @@ class Detector:
 						name = Detector.recognize_face(face['frame'])
 						if name is not None:
 							try:
-								cv2.putText(face['frame'], name, (0, 0), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 0, 0), 2)
+								cv2.putText(face['frame'], name, (0, 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
 							except TypeError:
 								log('DETECTOR', 'Error drawing text, continuing')
-							cv2.imwrite(SNAPSHOT_DIR+str(datetime.now())+'_face.jpg', face['frame'])
+							cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_face.jpg', face['frame'])
 							break
-						cv2.imwrite(SNAPSHOT_DIR+str(datetime.now())+'_face.jpg', face['frame'])
+						cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_face.jpg', face['frame'])
 
 				cls.motion_frames = []
 

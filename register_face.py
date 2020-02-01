@@ -64,13 +64,11 @@ class RegisterFace:
 		face_frame = RegisterFace.detect_faces(video_frame)
 		if face_frame is not None:
 			cv2.imwrite(path + '/' + str(uuid.uuid4()) + '.jpg', face_frame)
-		return face_frame
 
 	@staticmethod
 	def process_images(name):
 		knownEmbeddings = []
 		knownLabels = []
-
 		for dirpath, dirnames, files in os.walk(images_dir + '/' + name):
 			for image in files:
 				print('Processing ' + image + ' of ' + name)
@@ -82,37 +80,27 @@ class RegisterFace:
 					knownLabels.append(name)
 					knownEmbeddings.append(embeddings)
 			break
-
 		print("Chur, dumping "+str(len(knownEmbeddings))+" embeddings to disk...")
-		
 		f = open('./embeddings/'+name+'.pickle', "wb")
 		f.write(pickle.dumps({'embeddings': knownEmbeddings, 'names': knownLabels}))
 		f.close()
 
 	def __init__(self, photos_to_take=0, name=None):
-
 		if name is not None and photos_to_take > 0:
-			photos_taken = 0
 			print('Taking '+str(photos_to_take)+' photos of '+name)
 			os.system('aplay /home/pi/nectalert/sounds/beep.wav')
-			while photos_taken < photos_to_take:
+			for i in range(0, photos_to_take):
 				print('Strike a pose for photo ' + str(i))
 				time.sleep(1)
-				face_frame = RegisterFace.take_a_photo(images_dir + '/' + name)
-				if face_frame is not None:
-					photos_taken += 1
-	
+				RegisterFace.take_a_photo(images_dir + '/' + name)
 			os.system('aplay /home/pi/nectalert/sounds/beep.wav')
-
 		print('Processing faces...')
-
 		if name is None:
 			for dirpath, dirnames, files in os.walk(images_dir):
 				for dirname in dirnames:
 					RegisterFace.process_images(dirname)
 		else:
 			RegisterFace.process_images(name)
-
 		print("Done! You should run train_model.py now.")
 
 if len(sys.argv) > 1:
