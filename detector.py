@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import globals
 from datetime import datetime
+import paho.mqtt.publish as publish
 import numpy as np
 import imutils
 import freenect
@@ -14,7 +15,7 @@ from notifier import Notifier
 MOTION_SIZE_THRESHOLD = 2000
 MOTION_FRAMES_THRESHOLD = 8
 MOTION_DELTA_THRESHOLD = 5
-FACE_RECOGNITION_PROBABILITY = 0.6
+FACE_RECOGNITION_PROBABILITY = 0.8
 FACE_DETECTION_PROBABILITY = 0.6
 
 SNAPSHOT_DIR = '/share/'
@@ -62,13 +63,12 @@ class Detector:
 			name = False
 			# if there is motion look for faces and save images
 			if motion is True:
+				publish.single("home/frontdoor_movement", "Yes", hostname=globals.HOSTNAME)
+
 				for frame_obj in cls.motion_frames:
 					for movement in frame_obj['motion_boxes']:
 						(x, y, w, h) = cv2.boundingRect(movement)
-						try:
-							cv2.rectangle(frame_obj['frame'], (x, y), (x+w, y+h), (0, 255, 0), 2)
-						except TypeError:
-							log('DETECTOR', 'Error drawing rectangle, continuing')
+						cv2.rectangle(frame_obj['frame'], (x, y), (x+w, y+h), (0, 255, 0), 2)
 						cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_motion.jpg', frame_obj['frame'])
 
 				faces = cls.detect_faces()
@@ -80,15 +80,14 @@ class Detector:
 					for face in faces:
 						if globals.OFFLINE_MODE:
 							cv2.imshow('Face', face['frame'])
-						name = Detector.recognize_face(face['frame'])
+							
+						big_face = imutils.resize(face['frame'], width=200)
+						name, text = Detector.recognize_face(face['frame'])
 						if name is not None:
-							try:
-								cv2.putText(face['frame'], name, (0, 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
-							except TypeError:
-								log('DETECTOR', 'Error drawing text, continuing')
-							cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_face.jpg', face['frame'])
+							cv2.putText(big_face, text, (0, 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
+							cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_face.jpg', big_face)
 							break
-						cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_face.jpg', face['frame'])
+						cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_face.jpg', big_face)
 
 				cls.motion_frames = []
 
@@ -99,7 +98,7 @@ class Detector:
 
 	@classmethod
 	def update_frame(cls, frame):
-		Detector.frame = frame
+		Detector.frame = imutils.resize(frame, width=600)
 
 	# Finds faces in a frame
 	# Params: Frame to look for faces in, confidence threshold from 0 to 1 (optional)
@@ -110,7 +109,6 @@ class Detector:
 		faces = []
 		for frame_obj in cls.motion_frames:
 			frame_copy = frame_obj['frame'].copy()
-			frame_copy = imutils.resize(frame_copy, width=600)
 			(h, w) = frame_copy.shape[:2]
 
 			blob = cv2.dnn.blobFromImage(cv2.resize(frame_copy, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0), swapRB=False, crop=False)
@@ -130,7 +128,16 @@ class Detector:
 					(fH, fW) = face.shape[:2]
 
 					if fW > 20 and fH > 20:
-						faces.append({'frame': face, 'startX': startX, 'startY': startY, 'endX': endX, 'endY': endY})
+						faces.append(
+							{
+								'frame': face, 
+								'confidence': confidence, 
+								'startX': startX, 
+								'startY': startY, 
+								'endX': endX, 
+								'endY': endY
+							}
+						)
 		return faces
 
 	# Recognizes any known faces in a frame
@@ -152,9 +159,9 @@ class Detector:
 		log('DETECTOR', 'Recognized ' + text)
 
 		if proba > FACE_RECOGNITION_PROBABILITY:
-			return name
+			return name, text
 		else:
-			return None
+			return None, None
 
 	# [Not used] inferior but faster method for face detection
 	@staticmethod

@@ -47,7 +47,7 @@ class Camera:
 	@staticmethod
 	def is_night():
 		now = datetime.now()
-		today_sunset = now.replace(hour=21, minute=30, second=0, microsecond=0)
+		today_sunset = now.replace(hour=20, minute=30, second=0, microsecond=0)
 		return now >= today_sunset
 
 	# Returns true if the frame is pretty dark
@@ -74,12 +74,12 @@ class Camera:
 
 	# Returns a frame from the camera depending on the mode
 	@staticmethod
-	def get_video(mode, i = 0):
+	def get_video(night, i = 0):
 		if i == 3:
 			log('CAMERA', 'Could not get video, does your kinect work?')
 			sys.exit(1)
 		try:
-			if mode == "night":
+			if night:
 				return Camera.get_ir()
 			else:
 				return Camera.get_rgb()
@@ -104,7 +104,8 @@ class Camera:
 	def video_thread(cls):
 		detectorer = Detector()
 		while Camera.running:
-			Camera.frame = cls.get_video(Camera.is_night())
+			is_night = Camera.is_night()
+			Camera.frame = cls.get_video(is_night)
 
 			if globals.OFFLINE_MODE:
 				cv2.imshow('Depth', depth)

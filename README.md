@@ -22,7 +22,7 @@ I found a Kinect at a second hand store for $20 and thought I'd do something wit
 1. Install dependencies: libfreenect, opencv, NGINX, uWSGI, hass, an MQTT broker (I used Mosquitto) [todo expand on this]
 1. Get this repo and put it in `/home/pi/nectalert`
 1. Put a `beep.wav` and a `doorbell.wav` in `./sounds`. Also optionally a file called `hello_[resident]` for each resident you want to recognize (determined by the array in `notifier.py`)
-1. Configure homeassistant to look at the video feed and receive notifications by adding this to your configuration.yaml:
+1. Configure homeassistant to look at the video feed and receive notifications by adding this to your `/home/homeassistant/.homeassistant/configuration.yaml`:
 
 ```
 mqtt:
@@ -61,8 +61,30 @@ and this to automations.yaml:
     data:
       title: "ANOTHER VISITOR!!!"
       message: "STAY A WHILE..."
+      - alias: 'Another Visitor'
+- alias: 'Motion detected'
+  trigger:
+    platform: mqtt
+    topic: "home/frontdoor_movement"
+    payload: "Yes"
+  condition:
+    - condition: time
+      after: '21:00'
+      before: '05:30'
+    - condition: state
+      entity_id: light.hue_color_lamp_7
+      state: 'off'
+  action:
+    - service: light.turn_on
+      entity_id: light.hue_color_lamp_7
+    - delay:
+        minutes: 10
+    - service: light.turn_off
+      entity_id: light.hue_color_lamp_7
+
 ```
 
+1. Restart homeassistant with `sudo systemctl restart home-assistant@homeassistant.service`
 1. Copy the nginx configs from `./conf` to `/etc/nginx/sites-available` and `ln -s` them to `/etc/nginx/sites-enabled` but not before replacing [your_URL] with your homes URL
 1. Stick your kinect sensor up where you plan on having it
 1. Copy `nectalert@pi.service` from `./conf` to `/etc/systemd/system` and do `sudo systemctl --system daemon-reload` and then `sudo systemctl enable nectalert@pi.service` 

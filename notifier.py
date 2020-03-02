@@ -1,3 +1,4 @@
+import globals
 import paho.mqtt.publish as publish
 from datetime import datetime, timedelta
 import os
@@ -51,8 +52,8 @@ class Notifier:
 	@staticmethod
 	def notify_stranger():
 		log("NOTIFY", "ANOTHER VISITOR... STAY A WHILE?")
-		publish.single("home/another_visitor", "Yes", hostname=HOSTNAME)
+		publish.single("home/another_visitor", "Yes", hostname=globals.HOSTNAME)
 
 	@classmethod
 	def unnotify(cls):
-		publish.single("home/another_visitor", "No", hostname=HOSTNAME)
+		publish.single("home/another_visitor", "No", hostname=globals.HOSTNAME)
