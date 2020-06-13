@@ -5,3 +5,4 @@ pyaudio
 pyttsx3
 uwsgi
 scikit-learn
+face_recognition

@@ -7,27 +7,21 @@ import imutils
 import freenect
 import cv2
 import pickle
-import frame_convert2
 from threading import Thread, Lock
 from logger import log
 from notifier import Notifier
 
-MOTION_SIZE_THRESHOLD = 2000
-MOTION_FRAMES_THRESHOLD = 8
-MOTION_DELTA_THRESHOLD = 5
-FACE_RECOGNITION_PROBABILITY = 0.8
-FACE_DETECTION_PROBABILITY = 0.6
+import face_recognition
+
+data = pickle.loads(open('./embeddings/encodings.pickle', "rb").read())
+known_face_encodings = data['known_face_encodings']
+known_face_names = data['known_face_names']
+
+MOTION_SIZE_THRESHOLD = 600 # higher means it will detect bigger movements and not smaller ones
+MOTION_FRAMES_THRESHOLD = 3 # number of frames where motion is detected before it starts looking for faces
+MOTION_DELTA_THRESHOLD = 15 # higher means it will detect bigger movements and not smaller ones
 
 SNAPSHOT_DIR = '/share/'
-
-# Various third party models for face detection
-detector = cv2.dnn.readNetFromTensorflow("lib/opencv_face_detector_uint8.pb", "lib/opencv_face_detector.pbtxt")
-embedder = cv2.dnn.readNetFromTorch('lib/openface.nn4.small2.v1.t7')
-face_cascade = cv2.CascadeClassifier('lib/haarcascade_frontalface_default.xml')
-
-# Our trained face recognition model
-recognizer = pickle.loads(open('./recognizer.pickle', "rb").read())
-labels = pickle.loads(open('./labels.pickle', "rb").read())
 
 def pretty_time():
 	return datetime.today().strftime('%Y-%m-%d %H_%M_%S')
@@ -60,126 +54,92 @@ class Detector:
 	def detection_thread(cls):
 		while Detector.running:
 			motion = cls.detect_motion()
-			name = False
+			full_frame = None
+			face_frame = None
+			name = "Unknown"
+
 			# if there is motion look for faces and save images
 			if motion is True:
-				publish.single("home/frontdoor_movement", "Yes", hostname=globals.HOSTNAME)
+				Notifier.notify_movement()
+				face_frame, name, full_frame = cls.detect_faces()
+
+				if face_frame is None:
+					log('DETECTOR', 'No faces.')
+				else:
+					log('DETECTOR', 'Found ' + name)
+					if globals.OFFLINE_MODE:
+						cv2.imshow('Face', face_frame)
 
 				for frame_obj in cls.motion_frames:
 					for movement in frame_obj['motion_boxes']:
-						(x, y, w, h) = cv2.boundingRect(movement)
-						cv2.rectangle(frame_obj['frame'], (x, y), (x+w, y+h), (0, 255, 0), 2)
 						cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_motion.jpg', frame_obj['frame'])
-
-				faces = cls.detect_faces()
-
-				if len(faces) == 0:
-					log('DETECTOR', 'No faces.')
-				else:
-					log('DETECTOR', 'Found ' + str(len(faces)) + ' faces.')
-					for face in faces:
-						if globals.OFFLINE_MODE:
-							cv2.imshow('Face', face['frame'])
-							
-						big_face = imutils.resize(face['frame'], width=200)
-						name, text = Detector.recognize_face(face['frame'])
-						if name is not None:
-							cv2.putText(big_face, text, (0, 12), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 2)
-							cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_face.jpg', big_face)
-							break
-						cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_face.jpg', big_face)
 
 				cls.motion_frames = []
 
-			if name is False:
-				Notifier.unnotify()
-			else:
+			if face_frame is not None:
 				Notifier.notify(name)
+				cv2.imwrite(SNAPSHOT_DIR+pretty_time()+'_face.jpg', full_frame)
 
 	@classmethod
 	def update_frame(cls, frame):
-		Detector.frame = imutils.resize(frame, width=600)
+		Detector.frame = frame
 
 	# Finds faces in a frame
-	# Params: Frame to look for faces in, confidence threshold from 0 to 1 (optional)
-	# Returns: An array of face objects if faces are found
+	# Returns: The cropped face (or none), the name of the face (or none, or "unknown"), the full frame with the face highlighted (or none)
 	@classmethod
 	def detect_faces(cls):
 		log('DETECTOR', 'Detecting faces in the last '+str(MOTION_FRAMES_THRESHOLD)+' frames...')
-		faces = []
+		name = "Unknown"
+		face_frame = None
+		full_frame = None
+		location = None
+
 		for frame_obj in cls.motion_frames:
-			frame_copy = frame_obj['frame'].copy()
-			(h, w) = frame_copy.shape[:2]
+			small_frame = cv2.resize(frame_obj['frame'], (0, 0), fx=0.5, fy=0.5)
+			rgb_small_frame = small_frame[:, :, ::-1]
 
-			blob = cv2.dnn.blobFromImage(cv2.resize(frame_copy, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0), swapRB=False, crop=False)
+			face_locations = face_recognition.face_locations(rgb_small_frame)
+			face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
 
-			detector.setInput(blob)
-			detections = detector.forward()
+			for i, face_encoding in enumerate(face_encodings):
+				matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+				name = "Unknown"
+				face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
+				best_match_index = np.argmin(face_distances)
 
-			for i in range(detections.shape[2]):
+				location = face_locations[i]
+				full_frame = frame_obj['frame'].copy()
 
-				confidence = detections[0, 0, i, 2]
+				if matches[best_match_index]:
+					name = known_face_names[best_match_index]
+					# As soon as we have someone stop looking
+					break
 
-				if confidence > FACE_DETECTION_PROBABILITY:
-					box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-					(startX, startY, endX, endY) = box.astype("int")
+		# Cut out the face
+		if location is not None:
+			(top, right, bottom, left) = location
+			top *= 2
+			right *= 2
+			bottom *= 2
+			left *= 2
 
-					face = frame_copy[startY:endY, startX:endX]
-					(fH, fW) = face.shape[:2]
+			# Draw a box around the face
+			cv2.rectangle(full_frame, (left, top), (right, bottom), (0, 0, 255), 2)
 
-					if fW > 20 and fH > 20:
-						faces.append(
-							{
-								'frame': face, 
-								'confidence': confidence, 
-								'startX': startX, 
-								'startY': startY, 
-								'endX': endX, 
-								'endY': endY
-							}
-						)
-		return faces
+			# Draw a label with a name below the face
+			cv2.rectangle(full_frame, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
+			font = cv2.FONT_HERSHEY_DUPLEX
+			cv2.putText(full_frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
 
-	# Recognizes any known faces in a frame
-	# Params: Cropped face frame, full video frame to write their name on
-	# Returns: The name of the person found or None if we couldn't reliably identify them
-	@staticmethod
-	def recognize_face(face):
-		log('DETECTOR', 'Attempting face recognition...')
-		faceBlob = cv2.dnn.blobFromImage(face, 1.0 / 255, (96, 96), (0, 0, 0), swapRB=True, crop=False)
-		embedder.setInput(faceBlob)
-		vec = embedder.forward()
+			face_frame = full_frame[top:bottom, left:right].copy()
 
-		preds = recognizer.predict_proba(vec)[0]
-		j = np.argmax(preds)
-		proba = preds[j]
-
-		name = labels.classes_[j]
-		text = "{}: {:.2f}%".format(name, proba * 100)
-		log('DETECTOR', 'Recognized ' + text)
-
-		if proba > FACE_RECOGNITION_PROBABILITY:
-			return name, text
-		else:
-			return None, None
-
-	# [Not used] inferior but faster method for face detection
-	@staticmethod
-	def detect_faces_cascade(frame):
-		frame_copy = frame.copy()
-		faces = face_cascade.detectMultiScale(frame_copy, 1.1, 4)
-
-		for (x, y, w, h) in faces:
-			cv2.rectangle(frame_copy, (x, y), (x+w, y+h), (0, 255, 0), 2)
-
-		return frame_copy, faces
+		return face_frame, name, full_frame
 
 	# Blurs and grayscales a frame
 	# Params: Frame
 	@staticmethod
 	def blur_and_gray(frame):
-		output = imutils.resize(frame, width=500)
-		output = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
+		output = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 		output = cv2.GaussianBlur(output, (21, 21), 0)
 		return output
 
@@ -193,7 +153,6 @@ class Detector:
 		return list(filter(lambda c: cv2.contourArea(c) > MOTION_SIZE_THRESHOLD, cnts))
 
 	# Detects motion in the stream
-	# Params: Frame
 	# Params: List of frames it found motion in if it did
 	@classmethod
 	def detect_motion(cls):

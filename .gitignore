@@ -1,2 +1,2 @@
-embeddings/input_images/*.jpg
+embeddings/input_images/*
 sounds/*.wav

@@ -8,52 +8,57 @@ from logger import log
 HOSTNAME = "localhost"
 notify_list = {
 	'fraser': {
-		'notify': False,
 		'greeting': 'hello_fraser.wav'
 	}, 
 	'peter': {
-		'notify': False,
 		'greeting': 'hello_peter.wav'
 	},
 	'james': {
-		'notify': True,
 		'greeting': 'jamesishere.wav'
 	}
 }
 
 class Notifier:
 	last_notify = None
-	cooldown = 5.0
+	cooldown = 8.0
 
 	@classmethod
 	def notify(cls, name):
 		the_past = datetime.now() - timedelta(seconds=cls.cooldown)
 
+		# If five seconds has passed since last notification
 		if cls.last_notify and the_past >= cls.last_notify:
 			cls.last_notify = None
+		elif cls.last_notify and the_past <= cls.last_notify:
+			log("NOTIFY", "We already notified, not notifying for a bit.")
+			return
 
+		# Set the notify to now
 		if not cls.last_notify:
 			cls.last_notify = datetime.now()
 
-		person = notify_list.get(name)
+		friend = notify_list.get(name)
 
-		# Play a sound
-		if person:
-			if person['greeting'] is not False:
-				log('NOTIFY', 'Hello ' + name)
-				os.system('aplay /home/pi/nectalert/sounds/' + notify_list[name]['greeting'])
-			if person['notify'] is False:
-				return
+		if friend:
+			if friend['greeting'] is not False:
+				Notifier.notify_friend(name, friend)
 		else:
-			os.system('aplay /home/pi/nectalert/sounds/doorbell.wav')
+			Notifier.notify_stranger()
 
-		Notifier.notify_stranger()
+	# Notify with a custom greeting
+	@staticmethod
+	def notify_friend(name, friend):
+		log('NOTIFY', 'Hello ' + name)
+		publish.single("home/doorbell_greet", friend['greeting'], hostname=globals.HOSTNAME)
 
+	
+	# Notify with a doorbell sound
 	@staticmethod
 	def notify_stranger():
 		log("NOTIFY", "ANOTHER VISITOR... STAY A WHILE?")
 		publish.single("home/another_visitor", "Yes", hostname=globals.HOSTNAME)
 
-	@classmethod
-	def unnotify(cls):
-		publish.single("home/another_visitor", "No", hostname=globals.HOSTNAME)
+	@staticmethod
+	def notify_movement():
+		log("NOTIFY", "Motion detected")
+		publish.single("home/frontdoor_movement", "Yes", hostname=globals.HOSTNAME)

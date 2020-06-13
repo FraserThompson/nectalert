@@ -47,7 +47,7 @@ class Camera:
 	@staticmethod
 	def is_night():
 		now = datetime.now()
-		today_sunset = now.replace(hour=20, minute=30, second=0, microsecond=0)
+		today_sunset = now.replace(hour=18, minute=30, second=0, microsecond=0)
 		return now >= today_sunset
 
 	# Returns true if the frame is pretty dark
@@ -86,18 +86,18 @@ class Camera:
 		except TypeError:
 			log('CAMERA', 'Failed to get video frame, attempt ' + str(i))
 			time.sleep(5)
-			return Camera.get_video(mode, i + 1)
+			return Camera.get_video(night, i + 1)
 
 	# Returns a 10 bit RGB frame from the IR camera
 	@staticmethod
 	def get_ir():
 		array,_ = freenect.sync_get_video(0, freenect.VIDEO_IR_10BIT)
-		return cv2.cvtColor(frame_convert2.pretty_depth_cv(array), cv2.COLOR_GRAY2RGB)
+		return imutils.rotate(cv2.cvtColor(frame_convert2.pretty_depth_cv(array), cv2.COLOR_GRAY2RGB), -90)
 
 	# Returns a 10 bit RGB frame from the normal camera
 	@staticmethod 
 	def get_rgb():
-		return frame_convert2.video_cv(freenect.sync_get_video()[0])
+		return imutils.rotate(frame_convert2.video_cv(freenect.sync_get_video()[0]), -90)
 
 	# Gets frames, detects faces
 	@classmethod
